@@ -1,24 +1,594 @@
-if not game:IsLoaded() then
-    repeat task.wait() until game:IsLoaded()
+-- Storm Hub Duels v3.0 - Delta Executable Version
+
+if _G.__StormHubLoaded then
+-- Cleanup existing GUI
+local coreGui = game:GetService('CoreGui')
+local playerGui = game:GetService('Players').LocalPlayer:FindFirstChild('PlayerGui')
+
+local guiNames = {'StormHubGUI', 'StormHub_ModeBtns', 'StormHub_Banner', 'StormHub_ProgressBar', 'StormHub_MobilePanel'}  
+for _, name in ipairs(guiNames) do  
+    pcall(function()  
+        if coreGui:FindFirstChild(name) then coreGui:FindFirstChild(name):Destroy() end  
+        if playerGui and playerGui:FindFirstChild(name) then playerGui:FindFirstChild(name):Destroy() end  
+    end)  
 end
 
-local Players          = game:GetService("Players")
-local UserInputService = game:GetService("UserInputService")
-local RunService       = game:GetService("RunService")
-local CoreGui          = game:GetService("CoreGui")
-local RS               = game:GetService("ReplicatedStorage")
-local LocalPlayer      = Players.LocalPlayer
-local SellRemote; pcall(function()
-    SellRemote = game:GetService("ReplicatedStorage"):FindFirstChild("RemoteEvents")
-        and game:GetService("ReplicatedStorage").RemoteEvents:FindFirstChild("PlotService/Sell")
-    if not SellRemote then
-        SellRemote = game:GetService("ReplicatedStorage"):FindFirstChild("PlotService/Sell", true)
-    end
+end
+
+_G.__StormHubLoaded = true
+
+-- Wait for game to load
+repeat task.wait() until game:IsLoaded()
+
+local RunService = game:GetService('RunService')
+local UserInputService = game:GetService('UserInputService')
+local TweenService = game:GetService('TweenService')
+local HttpService = game:GetService('HttpService')
+local Players = game:GetService('Players')
+local ReplicatedStorage = game:GetService('ReplicatedStorage')
+local LocalPlayer = Players.LocalPlayer
+
+-- Variáveis de controle de estado (Toggles)
+local lagTracks = {}
+local lagBombActive = false
+local speedActive = false
+local speedConnection = nil
+local infJump = false
+local dropBrainrotActive = false
+
+-- Variáveis do Sistema Drop Brainrot
+local dropJumping = false
+local dropLastJump = 0
+local brainrotConnection = nil
+
+-- Criar Main GUI
+local screenGui = Instance.new('ScreenGui')
+screenGui.Name = 'StormHubGUI'
+screenGui.ResetOnSpawn = false
+screenGui.IgnoreGuiInset = true
+screenGui.DisplayOrder = 100
+screenGui.Parent = game:GetService('CoreGui')
+
+-- Painel Compactado
+local mainFrame = Instance.new('Frame')
+mainFrame.Name = 'MainOuter'
+mainFrame.Size = UDim2.new(0, 240, 0, 310)
+mainFrame.Position = UDim2.new(0.5, -120, 0.5, -155)
+mainFrame.BackgroundColor3 = Color3.fromRGB(10, 10, 18)
+mainFrame.BorderSizePixel = 0
+mainFrame.ClipsDescendants = false
+mainFrame.Visible = true
+mainFrame.Parent = screenGui
+
+local corner = Instance.new('UICorner')
+corner.CornerRadius = UDim.new(0, 12)
+corner.Parent = mainFrame
+
+local stroke = Instance.new('UIStroke')
+stroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+stroke.LineJoinMode = Enum.LineJoinMode.Round
+stroke.Thickness = 2
+stroke.Color = Color3.new(1, 1, 1)
+stroke.Parent = mainFrame
+
+local strokeGradient = Instance.new('UIGradient')
+strokeGradient.Color = ColorSequence.new({
+ColorSequenceKeypoint.new(0, Color3.fromRGB(60, 65, 70)),
+ColorSequenceKeypoint.new(0.4, Color3.fromRGB(60, 65, 70)),
+ColorSequenceKeypoint.new(0.5, Color3.fromRGB(180, 185, 190)),
+ColorSequenceKeypoint.new(0.6, Color3.fromRGB(60, 65, 70)),
+ColorSequenceKeypoint.new(1, Color3.fromRGB(60, 65, 70)),
+})
+strokeGradient.Parent = stroke
+
+RunService.Heartbeat:Connect(function()
+local time = tick()
+strokeGradient.Rotation = (time * 25) % 360
+local pulse = math.sin((time * 0.8) * math.pi * 2)
+stroke.Transparency = 0.25 * (1 - ((pulse + 1) / 2))
 end)
 
-local _syncChannel = nil
-pcall(function()
-    local sync = require(RS.Packages.Synchronizer)
+local bgGradient = Instance.new('UIGradient')
+bgGradient.Color = ColorSequence.new({
+ColorSequenceKeypoint.new(0, Color3.fromRGB(18, 18, 22)),
+ColorSequenceKeypoint.new(0.35, Color3.fromRGB(10, 10, 18)),
+ColorSequenceKeypoint.new(0.65, Color3.fromRGB(14, 14, 22)),
+ColorSequenceKeypoint.new(1, Color3.fromRGB(6, 6, 12)),
+})
+bgGradient.Rotation = 135
+bgGradient.Parent = mainFrame
+
+local texture1 = Instance.new('ImageLabel')
+texture1.Size = UDim2.new(1, 0, 1, 0)
+texture1.BackgroundTransparency = 1
+texture1.Image = 'rbxassetid://6580968501'
+texture1.ImageTransparency = 0.91
+texture1.ScaleType = Enum.ScaleType.Tile
+texture1.TileSize = UDim2.new(0, 64, 0, 64)
+texture1.ZIndex = 2
+texture1.BorderSizePixel = 0
+texture1.Parent = mainFrame
+
+local texture2 = Instance.new('ImageLabel')
+texture2.Size = UDim2.new(1, 0, 1, 0)
+texture2.BackgroundTransparency = 1
+texture2.Image = 'rbxassetid://2454009026'
+texture2.ImageTransparency = 0.94
+texture2.ScaleType = Enum.ScaleType.Tile
+texture2.TileSize = UDim2.new(0, 4, 0, 4)
+texture2.ZIndex = 3
+texture2.BorderSizePixel = 0
+texture2.Parent = mainFrame
+
+local clipFrame = Instance.new('Frame')
+clipFrame.Size = UDim2.new(1, 0, 1, 0)
+clipFrame.BackgroundTransparency = 1
+clipFrame.BorderSizePixel = 0
+clipFrame.ClipsDescendants = true
+clipFrame.Parent = mainFrame
+
+local clipCorner = Instance.new('UICorner')
+clipCorner.CornerRadius = UDim.new(0, 12)
+clipCorner.Parent = clipFrame
+
+local buttonContainer = Instance.new('Frame')
+buttonContainer.Size = UDim2.new(1, -24, 1, -24)
+buttonContainer.Position = UDim2.new(0, 12, 0, 12)
+buttonContainer.BackgroundTransparency = 1
+buttonContainer.Parent = clipFrame
+
+local uiListLayout = Instance.new('UIListLayout')
+uiListLayout.Padding = UDim.new(0, 10)
+uiListLayout.SortOrder = Enum.SortOrder.LayoutOrder
+uiListLayout.Parent = buttonContainer
+
+-- Menu Button
+local menuButton = Instance.new('TextButton')
+menuButton.Size = UDim2.new(0, 80, 0, 35)
+menuButton.Position = UDim2.new(0, 8, 0.5, -17.5)
+menuButton.BackgroundColor3 = Color3.fromRGB(10, 10, 20)
+menuButton.TextColor3 = Color3.fromRGB(180, 185, 190)
+menuButton.Text = 'MENU'
+menuButton.Font = Enum.Font.GothamMedium
+menuButton.TextSize = 13
+menuButton.BorderSizePixel = 0
+menuButton.AutoButtonColor = false
+menuButton.ZIndex = 10
+menuButton.Parent = screenGui
+
+local menuCorner = Instance.new('UICorner')
+menuCorner.CornerRadius = UDim.new(0, 8)
+menuCorner.Parent = menuButton
+
+local menuStroke = Instance.new('UIStroke')
+menuStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+menuStroke.Thickness = 2
+menuStroke.Color = Color3.new(1, 1, 1)
+menuStroke.Parent = menuButton
+
+local menuGradient = Instance.new('UIGradient')
+menuGradient.Color = ColorSequence.new({
+ColorSequenceKeypoint.new(0, Color3.fromRGB(60, 65, 70)),
+ColorSequenceKeypoint.new(0.4, Color3.fromRGB(60, 65, 70)),
+ColorSequenceKeypoint.new(0.5, Color3.fromRGB(180, 185, 190)),
+ColorSequenceKeypoint.new(0.6, Color3.fromRGB(60, 65, 70)),
+ColorSequenceKeypoint.new(1, Color3.fromRGB(60, 65, 70)),
+})
+menuGradient.Parent = menuStroke
+
+RunService.Heartbeat:Connect(function()
+local time = tick()
+menuGradient.Rotation = (time * 40) % 360
+local pulse = math.sin((time * 0.8) * math.pi * 2)
+menuStroke.Transparency = 0.25 * (1 - ((pulse + 1) / 2))
+end)
+
+local menuVisible = true
+menuButton.MouseButton1Click:Connect(function()
+menuVisible = not menuVisible
+mainFrame.Visible = menuVisible
+if menuVisible then
+mainFrame.Size = UDim2.new(0, 240, 0, 310)
+mainFrame.Position = UDim2.new(0.5, -120, 0.5, -155)
+end
+end)
+
+-- CÓDIGO DO JUMP REQUEST
+UserInputService.JumpRequest:Connect(function()
+	if infJump then
+		local char = LocalPlayer.Character
+		if char and char:FindFirstChild("HumanoidRootPart") then
+			char.HumanoidRootPart.Velocity = Vector3.new(
+				char.HumanoidRootPart.Velocity.X,
+				45,
+				char.HumanoidRootPart.Velocity.Z
+			)
+		end
+	end
+end)
+
+-- Funções Lógicas do Switch (Lag)
+local function setLagBombState(enabled)
+    if enabled then
+        print("hehe")
+        local playerGui = LocalPlayer:WaitForChild("PlayerGui")  
+        local ScreenGui = Instance.new("ScreenGui")  
+        ScreenGui.Name = "AhansLagBombEffect"  
+        ScreenGui.Parent = playerGui  
+        ScreenGui.ResetOnSpawn = false  
+        ScreenGui.Enabled = false 
+          
+        local Frame = Instance.new("Frame")  
+        Frame.Size = UDim2.new(1, 0, 1, 0)  
+        Frame.BackgroundTransparency = 1  
+        Frame.Parent = ScreenGui  
+          
+        local TextLabel = Instance.new("TextLabel")  
+        TextLabel.Parent = Frame  
+        TextLabel.AnchorPoint = Vector2.new(0.5, 0.5)  
+        TextLabel.BackgroundColor3 = Color3.fromRGB(255, 255, 255)  
+        TextLabel.BackgroundTransparency = 1  
+        TextLabel.BorderSizePixel = 0  
+        TextLabel.Position = UDim2.new(0.5, 0, 0.5, 0)  
+        TextLabel.Size = UDim2.new(0, 408, 0, 152)  
+        TextLabel.Font = Enum.Font.FredokaOne  
+        TextLabel.Text = "Aham's Lag Bomb" 
+        TextLabel.TextColor3 = Color3.fromRGB(98, 17, 148)  
+        TextLabel.TextScaled = true  
+        TextLabel.TextWrapped = true  
+          
+        task.spawn(function()  
+            local function anticrashSkid(plr)  
+                local function anticrashChar(char)  
+                    local hum = char:WaitForChild("Humanoid", 5)  
+                    local anim = hum:WaitForChild("Animator", 5)  
+                    if anim then
+                        anim.AnimationPlayed:Connect(function(track)  
+                            track:AdjustSpeed(-math.huge)  
+                            track:Stop()  
+                        end)  
+                        for _, v in anim:GetPlayingAnimationTracks() do  
+                            v:AdjustSpeed(-math.huge)  
+                            v:Stop()  
+                        end  
+                    end
+                end  
+                plr.CharacterAdded:Connect(anticrashChar)  
+                if plr.Character then  
+                    anticrashChar(plr.Character)  
+                end  
+            end  
+              
+            for i, v in ipairs(Players:GetPlayers()) do  
+                if v ~= LocalPlayer then  
+                    anticrashSkid(v)  
+                end  
+            end  
+            Players.PlayerAdded:Connect(anticrashSkid)  
+        end)  
+          
+        task.spawn(function()  
+            while task.wait() and lagBombActive and ScreenGui.Parent do  
+                for i = 1, 5 do  
+                    local anim = Instance.new("Animation")  
+                    anim.AnimationId = `http{HttpService:GenerateGUID()}=113437017590496`  
+                      
+                    pcall(function()  
+                        local track = LocalPlayer.Character.Humanoid.Animator:LoadAnimation(anim)  
+                        track:Play(9e9, 9e9, 9e9)  
+                        RunService.PreRender:Wait()  
+                        track:AdjustSpeed(-math.huge)  
+                        table.insert(lagTracks, track) 
+                    end)  
+                end  
+            end  
+        end)  
+        print("Lag Bomb ativado!")
+    else
+        print("Lag parado!")
+        for _, track in ipairs(lagTracks) do  
+            pcall(function()  
+                track:Stop()  
+            end)  
+        end  
+        lagTracks = {}  
+          
+        local playerGui = LocalPlayer:WaitForChild("PlayerGui")  
+        for _, gui in ipairs(playerGui:GetChildren()) do  
+            if gui.Name == "AhansLagBombEffect" then  
+                gui:Destroy()  
+            end  
+        end
+    end
+end
+
+-- Funções Lógicas do Switch (Speed)
+local function setSpeedState(enabled)
+    if enabled then  
+        print("Speed ativado!")
+        speedConnection = RunService.Heartbeat:Connect(function()  
+            if speedActive then  
+                local char = LocalPlayer.Character  
+                if char then  
+                    local humanoid = char:FindFirstChild("Humanoid")  
+                    if humanoid then  
+                        humanoid.WalkSpeed = 45  
+                    end  
+                end  
+            end  
+        end)  
+    else  
+        if speedConnection then  
+            speedConnection:Disconnect()  
+            speedConnection = nil  
+        end  
+        local char = LocalPlayer.Character  
+        if char then  
+            local humanoid = char:FindFirstChild("Humanoid")  
+            if humanoid then  
+                humanoid.WalkSpeed = 16 
+                print("Speed desativado! WalkSpeed restaurado para 16")  
+            end  
+        end  
+    end  
+end
+
+-- Funções Lógicas do Switch (Infinite Jump)
+local function setInfiniteJumpState(enabled)
+    infJump = enabled
+    if enabled then
+        print("Infinite Jump Ativado!")
+    else
+        print("Infinite Jump Desativado!")
+    end
+end
+
+-- SUA FUNÇÃO DROP BRAINROT ORIGINAL
+local function DropBrainrot()
+    local now = tick()
+    if now - dropLastJump < 0.4 then return end
+    if dropJumping then return end
+    
+    local char = LocalPlayer.Character
+    local hrp = char and char:FindFirstChild("HumanoidRootPart")
+    local hum = char and char:FindFirstChildOfClass("Humanoid")
+    if not hrp or not hum then return end
+    
+    dropLastJump = now
+    dropJumping = true
+    
+    local groundPos = hrp.Position
+    
+    hum:ChangeState(Enum.HumanoidStateType.Jumping)
+    hrp.AssemblyLinearVelocity = Vector3.new(
+        hrp.AssemblyLinearVelocity.X,
+        140,
+        hrp.AssemblyLinearVelocity.Z
+    )
+    
+    task.delay(0.18, function()
+        if hrp then
+            hrp.CFrame = CFrame.new(groundPos)
+            hrp.AssemblyLinearVelocity = Vector3.zero
+        end
+        task.delay(0.1, function()
+            dropJumping = false
+        end)
+    end)
+end
+
+-- CONTROLE INSTANTÂNEO DO TOGGLE DROP BRAINROT (Sem delay!)
+local function setDropBrainrotState(enabled)
+    dropBrainrotActive = enabled
+    if enabled then
+        print("Drop Brainrot Ativado Instantaneamente!")
+        if brainrotConnection then brainrotConnection:Disconnect() end
+        
+        brainrotConnection = RunService.Heartbeat:Connect(function()
+            if not dropBrainrotActive then return end
+            DropBrainrot()
+        end)
+    else
+        print("Drop Brainrot Desativado!")
+        if brainrotConnection then
+            brainrotConnection:Disconnect()
+            brainrotConnection = nil
+        end
+        dropJumping = false
+    end
+end
+
+-- Função Lógica do Botão (Spam Chat)
+local function triggerChatSpam()
+    print("Spam Chat Executado!")
+    task.spawn(function()
+        for i = 1, 10 do
+            if game:GetService("TextChatService").ChatVersion == Enum.ChatVersion.TextChatService then
+                local textChannel = game:GetService("TextChatService").TextChannels:FindFirstChild("RBXGeneral")
+                if textChannel then
+                    textChannel:SendAsync("#FlashHubTop")
+                end
+            else
+                local chatEvent = ReplicatedStorage:FindFirstChild("DefaultChatSystemChatEvents") and ReplicatedStorage.DefaultChatSystemChatEvents:FindFirstChild("SayMessageRequest")
+                if chatEvent then
+                    chatEvent:FireServer("#FlashHubTop", "All")
+                end
+            end
+            task.wait(0.2)
+        end
+    end)
+end
+
+-- Criador de Componentes Estilo Toggle Switch Compacto
+local function createToggleRow(text, initialStatus, onToggleCallback, layoutOrder)
+    local rowFrame = Instance.new('Frame')
+    rowFrame.Size = UDim2.new(1, 0, 0, 34)
+    rowFrame.BackgroundTransparency = 1
+    rowFrame.LayoutOrder = layoutOrder
+    rowFrame.Parent = buttonContainer
+
+    local label = Instance.new('TextLabel')
+    label.Size = UDim2.new(1, -55, 1, 0)
+    label.BackgroundTransparency = 1
+    label.Text = text:upper()
+    label.TextColor3 = Color3.fromRGB(190, 195, 200)
+    label.Font = Enum.Font.GothamMedium
+    label.TextSize = 11
+    label.TextXAlignment = Enum.TextXAlignment.Left
+    label.Parent = rowFrame
+
+    local switchBG = Instance.new('TextButton')
+    switchBG.Size = UDim2.new(0, 40, 0, 20)
+    switchBG.Position = UDim2.new(1, -40, 0.5, -10)
+    switchBG.BackgroundColor3 = Color3.fromRGB(35, 35, 40)
+    switchBG.Text = ""
+    switchBG.AutoButtonColor = false
+    switchBG.BorderSizePixel = 0
+    switchBG.Parent = buttonContainer
+
+    local bgCorner = Instance.new('UICorner')
+    bgCorner.CornerRadius = UDim.new(1, 0)
+    bgCorner.Parent = switchBG
+    switchBG.Parent = rowFrame
+
+    local circle = Instance.new('Frame')
+    circle.Size = UDim2.new(0, 14, 0, 14)
+    circle.Position = UDim2.new(0, 3, 0.5, -7)
+    circle.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+    circle.BorderSizePixel = 0
+    circle.Parent = switchBG
+
+    local circleCorner = Instance.new('UICorner')
+    circleCorner.CornerRadius = UDim.new(1, 0)
+    circleCorner.Parent = circle
+
+    local isActive = initialStatus
+
+    switchBG.MouseButton1Click:Connect(function()
+        isActive = not isActive
+        
+        if text:lower():find("lag") then lagBombActive = isActive 
+        elseif text:lower():find("speed") then speedActive = isActive 
+        elseif text:lower():find("infinite") then infJump = isActive
+        elseif text:lower():find("brainrot") then dropBrainrotActive = isActive
+        end
+
+        if isActive then
+            TweenService:Create(circle, TweenInfo.new(0.2, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {Position = UDim2.new(1, -17, 0.5, -7)}):Play()
+            TweenService:Create(switchBG, TweenInfo.new(0.2), {BackgroundColor3 = Color3.fromRGB(70, 75, 80)}):Play()
+        else
+            TweenService:Create(circle, TweenInfo.new(0.2, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {Position = UDim2.new(0, 3, 0.5, -7)}):Play()
+            TweenService:Create(switchBG, TweenInfo.new(0.2), {BackgroundColor3 = Color3.fromRGB(35, 35, 40)}):Play()
+        end
+
+        onToggleCallback(isActive)
+    end)
+end
+
+-- Criador de Botão de Clique Único Compacto
+local function createClickButtonRow(text, onClickCallback, layoutOrder)
+    local rowFrame = Instance.new('Frame')
+    rowFrame.Size = UDim2.new(1, 0, 0, 34)
+    rowFrame.BackgroundTransparency = 1
+    rowFrame.LayoutOrder = layoutOrder
+    rowFrame.Parent = buttonContainer
+
+    local clickButton = Instance.new('TextButton')
+    clickButton.Size = UDim2.new(1, 0, 0, 28)
+    clickButton.Position = UDim2.new(0, 0, 0.5, -14)
+    clickButton.BackgroundColor3 = Color3.fromRGB(30, 30, 38)
+    clickButton.Text = text:upper()
+    clickButton.TextColor3 = Color3.fromRGB(220, 225, 230)
+    clickButton.Font = Enum.Font.GothamMedium
+    clickButton.TextSize = 11
+    clickButton.BorderSizePixel = 0
+    clickButton.AutoButtonColor = false
+    clickButton.Parent = rowFrame
+
+    local btnCorner = Instance.new('UICorner')
+    btnCorner.CornerRadius = UDim.new(0, 6)
+    btnCorner.Parent = clickButton
+
+    local btnStroke = Instance.new('UIStroke')
+    btnStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+    btnStroke.Thickness = 1
+    btnStroke.Color = Color3.fromRGB(55, 60, 65)
+    btnStroke.Parent = clickButton
+
+    clickButton.MouseEnter:Connect(function() TweenService:Create(clickButton, TweenInfo.new(0.2), {BackgroundColor3 = Color3.fromRGB(42, 42, 52)}):Play() end)
+    clickButton.MouseLeave:Connect(function() TweenService:Create(clickButton, TweenInfo.new(0.2), {BackgroundColor3 = Color3.fromRGB(30, 30, 38)}):Play() end)
+    clickButton.MouseButton1Down:Connect(function() TweenService:Create(clickButton, TweenInfo.new(0.05), {BackgroundColor3 = Color3.fromRGB(60, 65, 70)}):Play() end)
+    clickButton.MouseButton1Up:Connect(function() TweenService:Create(clickButton, TweenInfo.new(0.1), {BackgroundColor3 = Color3.fromRGB(42, 42, 52)}):Play() end)
+
+    clickButton.MouseButton1Click:Connect(onClickCallback)
+end
+
+-- Inicializando as Funções
+createToggleRow("Lag Bomb Effect", false, setLagBombState, 1)
+createToggleRow("Speed Heartbeat", false, setSpeedState, 2)
+createToggleRow("Infinite Jump", false, setInfiniteJumpState, 3)
+createToggleRow("Drop Brainrot", false, setDropBrainrotState, 4)
+createClickButtonRow("Spam Chat (#FlashHubTop)", triggerChatSpam, 5)
+
+-- CRÉDITOS: Feito Por: autistanaochorex
+local creditsFrame = Instance.new('Frame')
+creditsFrame.Size = UDim2.new(1, 0, 0, 25)
+creditsFrame.BackgroundTransparency = 1
+creditsFrame.LayoutOrder = 6
+creditsFrame.Parent = buttonContainer
+
+local creditsLabel = Instance.new('TextLabel')
+creditsLabel.Size = UDim2.new(1, 0, 1, 0)
+creditsLabel.BackgroundTransparency = 1
+creditsLabel.Text = "FEITO POR: autistanaochorex"
+creditsLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
+creditsLabel.Font = Enum.Font.GothamBold
+creditsLabel.TextSize = 10
+creditsLabel.TextXAlignment = Enum.TextXAlignment.Center
+creditsLabel.Parent = creditsFrame
+
+local creditsGradient = Instance.new('UIGradient')
+creditsGradient.Color = ColorSequence.new({
+    ColorSequenceKeypoint.new(0, Color3.fromRGB(255, 0, 0)),
+    ColorSequenceKeypoint.new(0.2, Color3.fromRGB(255, 255, 0)),
+    ColorSequenceKeypoint.new(0.4, Color3.fromRGB(0, 255, 0)),
+    ColorSequenceKeypoint.new(0.6, Color3.fromRGB(0, 255, 255)),
+    ColorSequenceKeypoint.new(0.8, Color3.fromRGB(0, 0, 255)),
+    ColorSequenceKeypoint.new(1, Color3.fromRGB(255, 0, 255))
+})
+creditsGradient.Parent = creditsLabel
+
+RunService.Heartbeat:Connect(function()
+    creditsGradient.Rotation = (tick() * 60) % 360
+end)
+
+print('✅ Storm Hub Duels v3.0 - Loaded with Instant Drop Brainrot!')
+
+-- Sistema de Arrasto do Painel Principal (Draggable)
+local dragging = false
+local dragStart
+local startPos
+
+mainFrame.InputBegan:Connect(function(input)
+if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+dragging = true
+dragStart = input.Position
+startPos = mainFrame.Position
+end
+end)
+
+mainFrame.InputEnded:Connect(function(input)
+if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+dragging = false
+end
+end)
+
+UserInputService.InputChanged:Connect(function(input)
+if dragging and (input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch) then
+local delta = input.Position - dragStart
+mainFrame.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + delta.X, startPos.Y.Scale, startPos.Y.Offset + delta.Y)
+end
+end)
     sync:WaitAndCall(LocalPlayer, function(ch)
         _syncChannel = ch
     end)
